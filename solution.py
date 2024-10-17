@@ -28,6 +28,9 @@ class DataCollector:
 
         self.sqlite_conn = sqlite3.connect('raw_data.db')
         self.setup_sqlite_db()
+        
+        self.running_metrics_conn = sqlite3.connect('running_metrics.db')
+        self.setup_running_metric_db()
 
     def setup_sqlite_db(self):
         """Initialize SQLite database for raw data"""
@@ -40,6 +43,31 @@ class DataCollector:
             )
         ''')
         self.sqlite_conn.commit()
+    
+    def setup_running_metric_db(self):
+        """Initialise SQLite database for running metrics (updated after every fetch)"""
+        cursor = self.running_metrics_conn.cursor()
+        
+        # Create running metrics table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS running_metrics (
+                symbol TEXT PRIMARY KEY,
+                latest_price REAL,
+                latest_timestamp TEXT,
+                daily_high REAL,
+                daily_low REAL,
+                processing_status TEXT
+            )
+        ''')
+
+        for symbol in self.symbols:
+            cursor.execute('''
+                INSERT OR IGNORE INTO running_metrics 
+                (symbol, processing_status) 
+                VALUES (?, 'initialized')
+            ''', (symbol,))
+            
+        self.running_metrics_conn.commit()
     
     def setup_postgres(self):
         cursor = self.postgres_conn.cursor()
@@ -138,6 +166,36 @@ class DataCollector:
             
         
         self.postgres_conn.commit()
+    
+    def update_running_metrics(self, data: List[Dict]):
+        """Real-time monitoring of metrics"""
+        cursor = self.running_metrics_conn.cursor()
+        
+        for entry in data:
+            symbol = entry['symbol']
+            current_price = entry['price']
+            current_timestamp = entry['timestamp']
+            
+            
+            # Update all metrics
+            cursor.execute('''
+                UPDATE running_metrics 
+                SET 
+                    latest_price = ?,
+                    latest_timestamp = ?,
+                    daily_high = MAX(?, COALESCE(daily_high,?)),
+                    daily_low = MIN(?, COALESCE(daily_low, ?)),
+                    processing_status = 'active'
+                WHERE symbol = ?
+            ''', (
+                current_price,
+                current_timestamp,
+                current_price, current_price,
+                current_price, current_price,
+                symbol
+            ))
+        
+        self.running_metrics_conn.commit()
 
     
     def run(self):
@@ -146,6 +204,7 @@ class DataCollector:
             for i in range(2):
                 # Fetch and store prices
                 current_prices = self.fetch_prices()
+                self.update_running_metrics(current_prices)
                 self.store_raw_data(current_prices)
                 
                 # Log current prices
@@ -162,6 +221,7 @@ class DataCollector:
         finally:
             self.postgres_conn.close()
             self.sqlite_conn.close()
+            self.running_metrics_conn.close()
 
 
 if __name__ == "__main__":
