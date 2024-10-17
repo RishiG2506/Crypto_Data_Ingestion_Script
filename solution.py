@@ -84,8 +84,65 @@ class DataCollector:
         self.sqlite_conn.commit()
 
     
+    def downsample_and_store(self):
+        """Calculate EOD stats for each symbol and store in Postgres"""
+        cursor = self.sqlite_conn.cursor()
+        pg_cursor = self.postgres_conn.cursor()
+        
+        for symbol in self.symbols:
+            # Get EOD stats from raw data (sqlite)
+            cursor.execute('''
+                SELECT 
+                    date(timestamp) as date,
+                    MIN(price) as low_price,
+                    MAX(price) as high_price,
+                    AVG(price) as avg_price
+                FROM raw_prices 
+                WHERE symbol = ?
+                GROUP BY date(timestamp)
+            ''', (symbol,))
+            eod_stats = cursor.fetchone()
+
+            cursor.execute('''
+                SELECT 
+                    price
+                FROM raw_prices 
+                WHERE symbol = ?
+                ORDER BY timestamp
+                LIMIT 1
+            ''', (symbol,))
+            opening_price = cursor.fetchone()
+
+            cursor.execute('''
+                SELECT 
+                    price
+                FROM raw_prices 
+                WHERE symbol = ? 
+                ORDER BY timestamp DESC
+                LIMIT 1
+            ''', (symbol,))
+            closing_price = cursor.fetchone()
+
+            print(symbol)
+            print(eod_stats)
+            print(opening_price)
+
+            
+            # Store downsampled_data in PostgreSQL store
+            pg_cursor.execute('''
+                        INSERT INTO downsampled_prices
+                        (date, symbol, open_price, high_price, low_price, close_price, avg_price)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                              ''',
+                        (eod_stats[0], symbol, opening_price[0], eod_stats[2], eod_stats[1], closing_price[0], eod_stats[3]))
+            
+        
+        self.postgres_conn.commit()
+
+    
     def run(self):
         try:
+            #2 iterations for testing purposes. To be inside while True:
             for i in range(2):
                 # Fetch and store prices
                 current_prices = self.fetch_prices()
@@ -97,6 +154,8 @@ class DataCollector:
                 
 
                 time.sleep(self.sampling_frequency)
+            
+            self.downsample_and_store()
                 
         except KeyboardInterrupt:
             logger.info("Stopping Data Ingestion...")
