@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class DataCollector:
     def __init__(self):
-        self.symbols = ["BTCUSDT", "ETHUSDT"]
+        self.symbols = ["BTCUSDT", "ETHUSDT", "LTCBTC"]
         self.sampling_frequency = 5 #wait time in seconds
         self.base_url = "https://api.binance.com/api/v3/ticker/price"
 
@@ -31,8 +31,8 @@ class DataCollector:
 
         self.postgres_conn = psycopg2.connect(
             dbname="crypto_data",
-            user="rg2506",
-            password="",
+            user="default",  # Configure the username
+            password="",     #Configire the password here
             host="localhost",
             port="5432"
         )
@@ -116,14 +116,14 @@ class DataCollector:
                 logger.error(f"Error fetching price for {symbol}: {str(e)}")
         return results
     
-    
+
     def store_raw_data(self, raw_data: List[Dict]):
         """Store raw cryto data in SQLite"""
         cursor = self.sqlite_conn.cursor()
         for entry in raw_data:
             cursor.execute(
                 "INSERT INTO raw_prices (timestamp, symbol, price) VALUES (?, ?, ?)",
-                (entry['timestamp'], entry['symbol'], entry['price'])
+                (entry['timestamp'].isoformat(), entry['symbol'], entry['price'])
             )
         self.sqlite_conn.commit()
     
@@ -175,36 +175,6 @@ class DataCollector:
             metrics['latest_timestamp'] = None
 
     
-    # def update_running_metrics(self, data: List[Dict]):
-    #     """Real-time monitoring of metrics"""
-    #     cursor = self.running_metrics_conn.cursor()
-        
-    #     for entry in data:
-    #         symbol = entry['symbol']
-    #         current_price = entry['price']
-    #         current_timestamp = entry['timestamp']
-            
-            
-    #         # Update all metrics
-    #         cursor.execute('''
-    #             UPDATE running_metrics 
-    #             SET 
-    #                 latest_price = ?,
-    #                 latest_timestamp = ?,
-    #                 daily_high = MAX(?, COALESCE(daily_high,?)),
-    #                 daily_low = MIN(?, COALESCE(daily_low, ?)),
-    #                 processing_status = 'active'
-    #             WHERE symbol = ?
-    #         ''', (
-    #             current_price,
-    #             current_timestamp,
-    #             current_price, current_price,
-    #             current_price, current_price,
-    #             symbol
-    #         ))
-        
-    #     self.running_metrics_conn.commit()
-
     
     def run(self):
         try:
@@ -233,16 +203,18 @@ class DataCollector:
                 for price_data in current_prices:
                     logger.info(f"{price_data['symbol']}: ${price_data['price']:.2f} at {price_data['timestamp']}")
                 
-                for symbol in self.symbols:
-                        metrics = self.running_metrics[symbol]
-                        logger.info(
-                            f"{symbol} - Hour {current_hour}: "
-                            f"Current: ${metrics['latest_price']}, "
-                            f"High: ${metrics['high_price']}, "
-                            f"Low: ${metrics['low_price']}, "
-                            f"Avg: ${metrics['avg_price']}, "
-                            f"Samples: {metrics['sample_count']}"
-                        )
+                
+                # # Optional Logging Statements to view the Running Metrics
+                # for symbol in self.symbols:
+                #         metrics = self.running_metrics[symbol]
+                #         logger.info(
+                #             f"{symbol} - Hour {current_hour}: "
+                #             f"Current: ${metrics['latest_price']:.2f}, "
+                #             f"High: ${metrics['high_price']:.2f}, "
+                #             f"Low: ${metrics['low_price']:.2f}, "
+                #             f"Avg: ${metrics['avg_price']:.2f}, "
+                #             f"Samples: {metrics['sample_count']}"
+                #         )
                 
 
                 time.sleep(self.sampling_frequency)
