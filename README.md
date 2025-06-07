@@ -11,7 +11,7 @@ ans password accordingly.
 
 ## Summary
 
-This system implements a cryptocurrency price-monitoring solu4on which collects data
+This system implements a cryptocurrency price-monitoring solution which collects data
 from a public API by Binance. It employs a dual database architecture: SQLite for transient
 storage of raw data fetched by the API, and PostgreSQL for persistent storage of running
 metrics.
